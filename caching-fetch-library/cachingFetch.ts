@@ -3,6 +3,9 @@
 // However, you must not change the surface API presented from this file,
 // and you should not need to change any other files in the project to complete the challenge
 
+import { useEffect, useState } from "react";
+import {appCache, isCached, updateCache} from "./appCache";
+
 type UseCachingFetch = (url: string) => {
   isLoading: boolean;
   data: unknown;
@@ -27,13 +30,49 @@ type UseCachingFetch = (url: string) => {
  * 4. This file passes a type-check.
  *
  */
-export const useCachingFetch: UseCachingFetch = (url) => {
+export const useCachingFetch: UseCachingFetch = (url:string) => {
+  const [isLoading, setLoading] = useState(appCache?.[url]?.data ? false : true);
+  const [data, setData] = useState<unknown>(appCache?.[url]?.data || null);
+  const [error, setError] = useState<Error | null>(appCache?.[url]?.error || null);
+
+  useEffect(() => {
+    // API req
+    const fetchData = async (url:string):Promise<void> => {
+      try{
+        setLoading(true);
+        const resp = await fetch(url);
+        if(!resp.ok){
+          throw new Error(`HTTP error Status:${resp.status}`);
+        }
+        const data = await resp.json();
+        // data is set in the hook 
+        setData(data);
+        // appCache is updated
+        updateCache({[url]:{data, error:null}});
+      }catch(error:any){
+        console.error("An error happend while fetching the data.", error);
+        const err = error instanceof Error ? error : new Error("An error happend while fetching the data.")
+        setError(err);
+        updateCache({[url]:{data:null, error:err}});
+      }finally{
+        setLoading(false);
+      }
+    } 
+    // if url is not found in appCache make a request;
+    if(!data){
+      //trigger request
+      fetchData(url);
+    }
+
+    return () => {
+      // cleanup in case component gets dismounted before fetch ends
+    }
+  },[url]);
+
   return {
-    data: null,
-    isLoading: false,
-    error: new Error(
-      'UseCachingFetch has not been implemented, please read the instructions in DevTask.md',
-    ),
+    data,
+    isLoading,
+    error,
   };
 };
 
@@ -52,9 +91,20 @@ export const useCachingFetch: UseCachingFetch = (url) => {
  *
  */
 export const preloadCachingFetch = async (url: string): Promise<void> => {
-  throw new Error(
-    'preloadCachingFetch has not been implemented, please read the instructions in DevTask.md',
-  );
+  // API req
+    try{
+      const resp = await fetch(url);
+      if(!resp.ok){
+        throw new Error(`HTTP error Status:${resp.status}`);
+      }
+      const data = await resp.json();
+      // appCache is updated
+      updateCache({[url]:{data, error:null}});
+    }catch(error:any){
+      console.error("An error happend while fetching the data.", error);
+      const err = error instanceof Error ? error : new Error("An error happend while fetching the data.")
+      updateCache({[url]:{data:null, error:err}});
+    }
 };
 
 /**
@@ -73,8 +123,26 @@ export const preloadCachingFetch = async (url: string): Promise<void> => {
  * 4. This file passes a type-check.
  *
  */
-export const serializeCache = (): string => '';
+export const serializeCache = (): string => {
+  try{
+    return JSON.stringify(appCache);
+  }catch(err:any){
+    console.error("An error happened while serializing cache")
+    return JSON.stringify({error:"An error happened while serializing cache"});
+  }
+};
 
-export const initializeCache = (serializedCache: string): void => {};
+export const initializeCache = (serializedCache: string): void => {
+  try{
+    const deserializedCache = JSON.parse(serializedCache);
+    updateCache(deserializedCache);
+  }catch(err:any){
+    console.error("An error happened while initializing the cache", err);
+  }
+};
 
-export const wipeCache = (): void => {};
+export const wipeCache = (): void => {
+  for(const key in appCache){
+    delete appCache[key];
+  }
+};
